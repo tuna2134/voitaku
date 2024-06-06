@@ -20,7 +20,7 @@ pub struct VoiceConnectionData {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct RawDiscordPayload<'a> {
+pub struct RawDiscordRecvPayload<'a> {
     pub op: u8,
     #[serde(borrow)]
     pub d: &'a RawValue,
@@ -31,8 +31,30 @@ pub struct DiscordHello {
     pub heartbeat_interval: f64,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DiscordReady {
+    pub ssrc: u64,
+    pub ip: String,
+    pub port: u16,
+    pub modes: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct DiscordHeartbeat {
     pub op: u8,
     pub d: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordIdentify {
+    pub op: u8,
+    pub d: DiscordIdentifyData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordIdentifyData {
+    pub server_id: String,
+    pub user_id: String,
+    pub session_id: String,
+    pub token: String,
 }

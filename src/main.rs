@@ -7,8 +7,9 @@ use axum::{
     routing::get,
     Router,
 };
-use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use tokio::net::TcpListener;
+use futures_util::{SinkExt, StreamExt};
+use std::sync::Arc;
+use tokio::{net::TcpListener, sync::Mutex};
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
 
@@ -95,14 +96,18 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
     let mut discord_ws = {
         let url = format!(
             "wss://{}/?v=4",
-            data.endpoint.trim_start_matches("http://").trim_start_matches("https://")
+            data.endpoint
+                .trim_start_matches("http://")
+                .trim_start_matches("https://")
         );
         tracing::info!("Connecting to Discord Voice Server: {}", url);
         let (ws, _) = tokio_tungstenite::connect_async(url).await?;
-        ws
+        Arc::new(Mutex::new(ws))
     };
     let heartbeat_interval = loop {
-        let msg = discord_ws.next().await;
+        let mut discord_ws_lock = discord_ws.lock().await;
+        let msg = discord_ws_lock.next().await;
+        drop(discord_ws_lock);
         let msg = match msg {
             Some(Ok(msg)) => {
                 if let tungstenite::Message::Text(msg) = msg {
@@ -114,28 +119,80 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             Some(Err(e)) => return Err(e.into()),
             None => return Err(anyhow::anyhow!("No message received.")),
         };
-        let payload: types::RawDiscordPayload = serde_json::from_str(&msg)?;
+        let payload: types::RawDiscordRecvPayload = serde_json::from_str(&msg)?;
         if payload.op == 8 {
+            let mut discord_ws_lock = discord_ws.lock().await;
+            let result = discord_ws_lock
+                .send(
+                    json_to_tmsg(&types::DiscordIdentify {
+                        op: 0,
+                        d: types::DiscordIdentifyData {
+                            server_id: data.guild_id,
+                            user_id: data.user_id,
+                            session_id: data.session_id,
+                            token: data.token,
+                        },
+                    })
+                    .unwrap(),
+                )
+                .await;
+            if let Err(e) = result {
+                return Err(e.into());
+            }
             let hello: types::DiscordHello = serde_json::from_str(payload.d.get())?;
+            tracing::info!("{:?}", hello);
             break hello.heartbeat_interval;
         }
     };
+    let discord_ws_heartbeat = discord_ws.clone();
     tokio::spawn(async move {
         let mut last_sequence = 0;
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs_f64(heartbeat_interval)).await;
+            tracing::info!("Sending heartbeat...");
             last_sequence += 1;
-            let result = discord_ws
-                .send(json_to_tmsg(&types::DiscordHeartbeat {
-                    op: 1,
-                    d: last_sequence,
-                }).unwrap())
+            let mut discord_ws_lock = discord_ws_heartbeat.lock().await;
+            let result = discord_ws_lock
+                .send(
+                    json_to_tmsg(&types::DiscordHeartbeat {
+                        op: 3,
+                        d: last_sequence,
+                    })
+                    .unwrap(),
+                )
                 .await;
+            drop(discord_ws_lock);
+            tracing::info!("Heartbeat sent: {}", last_sequence);
             if let Err(e) = result {
                 tracing::error!("{:?}", e);
                 break;
             }
+            tokio::time::sleep(tokio::time::Duration::from_secs_f64(
+                heartbeat_interval / 1000.0,
+            ))
+            .await;
         }
     });
+    loop {
+        tokio::select! {
+            Some(msg) = async {
+                let mut discord_ws_lock = discord_ws.lock().await;
+                discord_ws_lock.next().await
+            } => {
+                let msg = match msg? {
+                    tungstenite::Message::Text(msg) => msg,
+                    _ => continue,
+                };
+                println!("{}", msg);
+                let payload: types::RawDiscordRecvPayload = serde_json::from_str(&msg)?;
+                match payload.op {
+                    2 => {
+                        let ready: types::DiscordReady = serde_json::from_str(payload.d.get())?;
+                        tracing::info!("{:?}", ready);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
     Ok(())
 }
