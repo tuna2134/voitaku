@@ -9,7 +9,10 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::{net::TcpListener, sync::Mutex};
+use tokio::{
+    net::TcpListener,
+    sync::{oneshot::channel, Mutex},
+};
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
 
@@ -58,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn ws_handle(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| wrapper(socket))
+    ws.on_upgrade(wrapper)
 }
 
 async fn wrapper(ws: WebSocket) {
@@ -93,7 +96,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
         }
     };
     tracing::info!("{:?}", data);
-    let mut discord_ws = {
+    let (mut sender, mut receiver) = {
         let url = format!(
             "wss://{}/?v=4",
             data.endpoint
@@ -102,12 +105,10 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
         );
         tracing::info!("Connecting to Discord Voice Server: {}", url);
         let (ws, _) = tokio_tungstenite::connect_async(url).await?;
-        Arc::new(Mutex::new(ws))
+        ws.split()
     };
     let heartbeat_interval = loop {
-        let mut discord_ws_lock = discord_ws.lock().await;
-        let msg = discord_ws_lock.next().await;
-        drop(discord_ws_lock);
+        let msg = receiver.next().await;
         let msg = match msg {
             Some(Ok(msg)) => {
                 if let tungstenite::Message::Text(msg) = msg {
@@ -121,8 +122,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
         };
         let payload: types::RawDiscordRecvPayload = serde_json::from_str(&msg)?;
         if payload.op == 8 {
-            let mut discord_ws_lock = discord_ws.lock().await;
-            let result = discord_ws_lock
+            let result = sender
                 .send(
                     json_to_tmsg(&types::DiscordIdentify {
                         op: 0,
@@ -144,14 +144,12 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             break hello.heartbeat_interval;
         }
     };
-    let discord_ws_heartbeat = discord_ws.clone();
     tokio::spawn(async move {
         let mut last_sequence = 0;
         loop {
             tracing::info!("Sending heartbeat...");
             last_sequence += 1;
-            let mut discord_ws_lock = discord_ws_heartbeat.lock().await;
-            let result = discord_ws_lock
+            let result = sender
                 .send(
                     json_to_tmsg(&types::DiscordHeartbeat {
                         op: 3,
@@ -160,7 +158,6 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                     .unwrap(),
                 )
                 .await;
-            drop(discord_ws_lock);
             tracing::info!("Heartbeat sent: {}", last_sequence);
             if let Err(e) = result {
                 tracing::error!("{:?}", e);
@@ -175,8 +172,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
     loop {
         tokio::select! {
             Some(msg) = async {
-                let mut discord_ws_lock = discord_ws.lock().await;
-                discord_ws_lock.next().await
+                receiver.next().await
             } => {
                 let msg = match msg? {
                     tungstenite::Message::Text(msg) => msg,
