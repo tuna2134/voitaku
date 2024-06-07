@@ -279,6 +279,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                             .sample_format(SampleFormat::from_str("s16").unwrap())
                             .sample_rate(48000)
                             .channel_layout(ChannelLayout::from_channels(2).unwrap())
+                            .bit_rate(128000)
                             .build()?;
 
                         let mut sender_lock = sender.lock().await;
