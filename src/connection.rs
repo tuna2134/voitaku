@@ -92,7 +92,7 @@ impl RTPConnection {
                 )
             };
             let encoder = self.encoder.lock().await;
-            encoder.encode(&voice_data, &mut encoded_voice)?;
+            encoder.encode(voice_data, &mut encoded_voice)?;
         }
         let buffer = self.encrypt(buffer, encoded_voice)?;
         self.udp_socket.send(&buffer).await?;
