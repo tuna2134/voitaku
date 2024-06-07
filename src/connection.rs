@@ -1,6 +1,6 @@
 use crypto_secretbox::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
-    Nonce, XSalsa20Poly1305,
+    XSalsa20Poly1305,
 };
 use tokio::net::UdpSocket;
 
@@ -47,6 +47,11 @@ impl RTPConnection {
     }
 
     pub fn send_voice_packet(&mut self, voice_data: Vec<u8>) -> anyhow::Result<()> {
+        let secret_key = if let Some(secret_key) = &self.secret_key {
+            secret_key
+        } else {
+            return Err(anyhow::anyhow!("Secret key not set"));
+        };
         self.sequence = self.sequence.wrapping_add(1);
         let mut buffer = Vec::new();
         buffer.extend_from_slice(&0x80u8.to_be_bytes());
@@ -57,8 +62,10 @@ impl RTPConnection {
         // ssrc
         buffer.extend_from_slice(&self.ssrc.to_be_bytes());
         let nonce = XSalsa20Poly1305::generate_nonce(&mut OsRng);
-        let mut cipher = XSalsa20Poly1305::new_from_slice(&self.secret_key.as_ref().unwrap())?;
+        let cipher = XSalsa20Poly1305::new_from_slice(&secret_key)?;
         let tag = cipher.encrypt_in_place(&nonce, &[], &mut buffer)?;
+        // add timestamp
+        self.timestamp = self.timestamp.wrapping_add((48000 / 1000) * 20);
         Ok(())
     }
 }

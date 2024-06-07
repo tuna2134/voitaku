@@ -10,7 +10,7 @@ pub enum Payload {
     VoiceConnectionData(VoiceConnectionData),
     #[serde(rename = "ready")]
     Ready,
-    #[serde(rename = "play")]
+    #[serde(rename = "voice.play")]
     VoicePlay(String),
 }
 
@@ -86,4 +86,17 @@ pub struct DiscordSelectProtocolDataInfo {
     pub address: String,
     pub port: u16,
     pub mode: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordVoiceSpeaking {
+    pub op: u8,
+    pub d: DiscordVoiceSpeakingData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordVoiceSpeakingData {
+    pub speaking: u32,
+    pub delay: u32,
+    pub ssrc: u32,
 }

@@ -7,6 +7,7 @@ from logging import getLogger
 from typing import TypedDict
 import json
 from os import getenv
+import base64
 
 import pytest
 
@@ -56,14 +57,21 @@ class VoiceClient(VoiceProtocol):
     async def recv(self):
         data = await self.ws.recv()
         data = json.loads(data)
-        print(data)
+        logger.info(data)
         if data["t"] == "hello":
             await self.ws.send(json.dumps({
                 "t": "voice.connection.data",
                 "d": self._voice_connection_data,
             }))
         elif data["t"] == "ready":
-            print(data)
+            logger.info("ready")
+            with open("tests/audio.mp3", "rb") as f:
+                await self.ws.send(
+                    json.dumps({
+                        "t": "voice.play",
+                        "d": base64.b64encode(f.read()).decode(),
+                    })
+                )
 
     async def on_voice_state_update(self, data):
         self.waiting_voice_state_update.set()

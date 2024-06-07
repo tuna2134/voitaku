@@ -3,6 +3,17 @@
 version = 3
 
 [[package]]
+name = "ac-ffmpeg"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43d1d77cd9038693a0551d28ccb8bd5c542e54017673bf9af780f7a3ca6da37c"
+dependencies = [
+ "cc",
+ "lazy_static",
+ "pkg-config",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -77,7 +88,7 @@ checksum = "3a6c9af12842a67734c9a2e355436e5d03b22383ed60cf13cd0c18fbfe3dcbcf"
 dependencies = [
  "async-trait",
  "axum-core",
- "base64",
+ "base64 0.21.7",
  "bytes",
  "futures-util",
  "http",
@@ -147,6 +158,12 @@ name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
+
+[[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bitflags"
@@ -1546,8 +1563,10 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "voitaku"
 version = "0.1.0"
 dependencies = [
+ "ac-ffmpeg",
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "crypto_secretbox",
  "dotenvy",
  "futures-util",

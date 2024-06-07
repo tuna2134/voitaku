@@ -1,3 +1,10 @@
+use ac_ffmpeg::{
+    codec::{
+        audio::{AudioDecoder, AudioEncoder, AudioResampler, ChannelLayout},
+        Decoder, Encoder,
+    },
+    format::{demuxer::Demuxer, io::IO},
+};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -9,13 +16,11 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::{
+    io::{Cursor, Write},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::{
-    net::{TcpListener, UdpSocket},
-    sync::Mutex,
-};
+use tokio::{net::TcpListener, sync::Mutex};
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
 
@@ -212,7 +217,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                                     }
                                 }
                             })?).await?;
-                            Some(Arc::new(Mutex::new((rtp))))
+                            Some(Arc::new(Mutex::new(rtp)))
                         }
                     }
                     4 => {
@@ -234,7 +239,79 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                     Message::Text(msg) => msg,
                     _ => continue,
                 };
-                println!("{}", msg);
+                let payload: types::Payload = serde_json::from_str(&msg)?;
+                match payload {
+                    Payload::VoicePlay(data) => {
+                        let data = base64::decode(data)?;
+                        let mut voice_data = Cursor::new(data);
+                        let io = IO::from_seekable_read_stream(&mut voice_data);
+                        let mut demuxer = Demuxer::builder()
+                            .build(io)?
+                            .find_stream_info(None)
+                            .map_err(|(_, e)| anyhow::anyhow!("Failed to find stream info: {}", e))?;
+                            let (index, binding) = demuxer
+                            .streams()
+                            .iter()
+                            .map(|stream| stream.codec_parameters())
+                            .enumerate()
+                            .find(|(_, params)| params.is_audio_codec())
+                            .ok_or_else(|| anyhow::anyhow!("No audio stream found"))?;
+                        let codec_params = binding.as_audio_codec_parameters().unwrap();
+
+                        let mut decoder = AudioDecoder::from_codec_parameters(codec_params)?.build()?;
+
+                        let mut resampler = AudioResampler::builder()
+                            .source_channel_layout(codec_params.channel_layout().to_owned())
+                            .source_sample_format(codec_params.sample_format())
+                            .source_sample_rate(codec_params.sample_rate())
+                            .target_channel_layout(ChannelLayout::from_channels(2).unwrap())
+                            .target_sample_format(codec_params.sample_format())
+                            .target_sample_rate(48000)
+                            // Sample rate / channel layout
+                            .target_frame_samples(Some(24000))
+                            .build()?;
+
+                        let mut encoder = AudioEncoder::builder("wavpack")?
+                            .sample_format(codec_params.sample_format())
+                            .sample_rate(48000)
+                            .channel_layout(ChannelLayout::from_channels(2).unwrap())
+                            .build()?;
+
+                        let mut sender_lock = sender.lock().await;
+                        sender_lock.send(json_to_tmsg(&types::DiscordVoiceSpeaking {
+                            op: 5,
+                            d: types::DiscordVoiceSpeakingData {
+                                speaking: 1 << 0,
+                                delay: 0,
+                                ssrc: 0,
+                            }
+                        })?).await?;
+                        tracing::info!("Playing voice data...");
+
+                        while let Some(packet) = demuxer.take()? {
+                            if packet.stream_index() != index {
+                                continue;
+                            }
+                            decoder.push(packet)?;
+
+                            while let Some(frame) = decoder.take()? {
+                                resampler.push(frame)?;
+
+                                while let Some(frame) = resampler.take()? {
+                                    encoder.push(frame)?;
+
+                                    while let Some(packet) = encoder.take()? {
+                                        if let Some(rtp) = &rtp {
+                                            let mut rtp_lock = rtp.lock().await;
+                                            rtp_lock.send_voice_packet(packet.data().to_vec())?;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
