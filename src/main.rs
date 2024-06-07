@@ -1,6 +1,6 @@
 use ac_ffmpeg::{
     codec::{
-        audio::{AudioDecoder, AudioEncoder, AudioResampler, ChannelLayout},
+        audio::{AudioDecoder, AudioEncoder, AudioResampler, ChannelLayout, SampleFormat},
         Decoder, Encoder,
     },
     format::{demuxer::Demuxer, io::IO},
@@ -17,6 +17,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use std::{
     io::Cursor,
+    str::FromStr,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -266,14 +267,16 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                             .source_sample_format(codec_params.sample_format())
                             .source_sample_rate(codec_params.sample_rate())
                             .target_channel_layout(ChannelLayout::from_channels(2).unwrap())
-                            .target_sample_format(codec_params.sample_format())
+                            .target_sample_format(
+                                SampleFormat::from_str("s16").unwrap()
+                            )
                             .target_sample_rate(48000)
                             // Sample rate / channel layout
                             .target_frame_samples(Some(24000))
                             .build()?;
 
-                        let mut encoder = AudioEncoder::builder("wavpack")?
-                            .sample_format(codec_params.sample_format())
+                        let mut encoder = AudioEncoder::builder("pcm_s16le")?
+                            .sample_format(SampleFormat::from_str("s16").unwrap())
                             .sample_rate(48000)
                             .channel_layout(ChannelLayout::from_channels(2).unwrap())
                             .build()?;
