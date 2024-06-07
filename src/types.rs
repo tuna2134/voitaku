@@ -8,6 +8,10 @@ pub enum Payload {
     Hello(String),
     #[serde(rename = "voice.connection.data")]
     VoiceConnectionData(VoiceConnectionData),
+    #[serde(rename = "ready")]
+    Ready,
+    #[serde(rename = "play")]
+    VoicePlay(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,6 +41,12 @@ pub struct DiscordReady {
     pub ip: String,
     pub port: u16,
     pub modes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DiscordSessionDescription {
+    pub mode: String,
+    pub secret_key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize)]

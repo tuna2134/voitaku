@@ -14,13 +14,15 @@ use std::{
 };
 use tokio::{
     net::{TcpListener, UdpSocket},
-    sync::{Mutex},
+    sync::Mutex,
 };
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
 
 mod types;
 use types::Payload;
+
+mod connection;
 
 fn json_to_msg<T>(data: &T) -> anyhow::Result<Message>
 where
@@ -177,7 +179,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             .await;
         }
     });
-    let mut socket = None;
+    let mut rtp = None;
     loop {
         tokio::select! {
             Some(msg) = async {
@@ -193,19 +195,10 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                     2 => {
                         let ready: types::DiscordReady = serde_json::from_str(payload.d.get())?;
                         tracing::info!("{:?}", ready);
-                        socket = {
-                            let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
-                            udp_socket.connect(format!("{}:{}", ready.ip, ready.port)).await?;
-                            // send discovery packet
-                            let mut buffer = [0; 74];
-                            buffer[0..2].copy_from_slice(&1u16.to_be_bytes());
-                            buffer[2..4].copy_from_slice(&70u16.to_be_bytes());
-                            buffer[4..8].copy_from_slice(&ready.ssrc.to_be_bytes());
-                            udp_socket.send(&buffer).await?;
-                            let mut buffer = [0; 74];
-                            udp_socket.recv(&mut buffer).await?;
-                            let address = String::from_utf8_lossy(&buffer[8..72]).to_string();
-                            let port = u16::from_be_bytes([buffer[72], buffer[73]]);
+                        rtp = {
+                            let rtp = connection::RTPConnection::new(ready.ssrc, ready.ip, ready.port).await?;
+                            rtp.send_discovery_packet(ready.ssrc).await?;
+                            let (address, port) = rtp.recv_discovery_packet().await?;
                             tracing::info!("Address: {}, Port: {}", address, port);
                             let mut sender_lock = sender.lock().await;
                             sender_lock.send(json_to_tmsg(&types::DiscordSelectProtocol {
@@ -219,13 +212,30 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                                     }
                                 }
                             })?).await?;
-                            Some(udp_socket)
+                            Some(Arc::new(Mutex::new((rtp))))
                         }
+                    }
+                    4 => {
+                        let session_description: types::DiscordSessionDescription = serde_json::from_str(payload.d.get())?;
+                        tracing::info!("{:?}", session_description);
+                        if let Some(rtp) = &rtp {
+                            let mut rtp_lock = rtp.lock().await;
+                            rtp_lock.set_secret_key(session_description.secret_key);
+                        }
+                        write.send(json_to_msg(&Payload::Ready)?).await?;
                     }
                     _ => {}
                 }
             }
-
+            Some(msg) = async {
+                read.next().await
+            } => {
+                let msg = match msg? {
+                    Message::Text(msg) => msg,
+                    _ => continue,
+                };
+                println!("{}", msg);
+            }
         }
     }
     Ok(())

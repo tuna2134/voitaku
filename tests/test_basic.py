@@ -51,15 +51,19 @@ class VoiceClient(VoiceProtocol):
         self.ws = await connect("ws://localhost:8000/ws")
         await self.recv()
         logger.info("connected")
+        asyncio.create_task(self.recv())
 
     async def recv(self):
         data = await self.ws.recv()
         data = json.loads(data)
+        print(data)
         if data["t"] == "hello":
             await self.ws.send(json.dumps({
                 "t": "voice.connection.data",
                 "d": self._voice_connection_data,
             }))
+        elif data["t"] == "ready":
+            print(data)
 
     async def on_voice_state_update(self, data):
         self.waiting_voice_state_update.set()
