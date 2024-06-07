@@ -16,7 +16,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::{
-    io::{Cursor, Write},
+    io::{Cursor},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
