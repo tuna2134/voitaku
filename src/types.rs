@@ -33,7 +33,7 @@ pub struct DiscordHello {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DiscordReady {
-    pub ssrc: u64,
+    pub ssrc: u32,
     pub ip: String,
     pub port: u16,
     pub modes: Vec<String>,
@@ -42,7 +42,7 @@ pub struct DiscordReady {
 #[derive(Serialize, Deserialize)]
 pub struct DiscordHeartbeat {
     pub op: u8,
-    pub d: u64,
+    pub d: u128,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -57,4 +57,23 @@ pub struct DiscordIdentifyData {
     pub user_id: String,
     pub session_id: String,
     pub token: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordSelectProtocol {
+    pub op: u8,
+    pub d: DiscordSelectProtocolData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordSelectProtocolData {
+    pub protocol: String,
+    pub data: DiscordSelectProtocolDataInfo,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiscordSelectProtocolDataInfo {
+    pub address: String,
+    pub port: u16,
+    pub mode: String,
 }

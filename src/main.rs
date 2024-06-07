@@ -8,10 +8,14 @@ use axum::{
     Router,
 };
 use futures_util::{SinkExt, StreamExt};
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tokio::{
-    net::TcpListener,
+    net::{TcpListener, UdpSocket},
     sync::{oneshot::channel, Mutex},
+    time::Instant,
 };
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
@@ -107,6 +111,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
         let (ws, _) = tokio_tungstenite::connect_async(url).await?;
         ws.split()
     };
+    let sender = Arc::new(Mutex::new(sender));
     let heartbeat_interval = loop {
         let msg = receiver.next().await;
         let msg = match msg {
@@ -122,7 +127,8 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
         };
         let payload: types::RawDiscordRecvPayload = serde_json::from_str(&msg)?;
         if payload.op == 8 {
-            let result = sender
+            let mut sender_lock = sender.lock().await;
+            let result = sender_lock
                 .send(
                     json_to_tmsg(&types::DiscordIdentify {
                         op: 0,
@@ -144,19 +150,22 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             break hello.heartbeat_interval;
         }
     };
+    let sender_clone = Arc::clone(&sender);
     tokio::spawn(async move {
         let mut last_sequence = 0;
         loop {
             tracing::info!("Sending heartbeat...");
             last_sequence += 1;
-            let result = sender
-                .send(
-                    json_to_tmsg(&types::DiscordHeartbeat {
-                        op: 3,
-                        d: last_sequence,
-                    })
-                    .unwrap(),
-                )
+            let now = {
+                // get unixtime (*1000)
+                let now = SystemTime::now();
+                let since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+                since_epoch.as_millis()
+            };
+            tracing::info!("Heartbeat: {}", now);
+            let mut sender_lock = sender_clone.lock().await;
+            let result = sender_lock
+                .send(json_to_tmsg(&types::DiscordHeartbeat { op: 3, d: now }).unwrap())
                 .await;
             tracing::info!("Heartbeat sent: {}", last_sequence);
             if let Err(e) = result {
@@ -169,6 +178,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             .await;
         }
     });
+    let mut socket = None;
     loop {
         tokio::select! {
             Some(msg) = async {
@@ -184,10 +194,39 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                     2 => {
                         let ready: types::DiscordReady = serde_json::from_str(payload.d.get())?;
                         tracing::info!("{:?}", ready);
+                        socket = {
+                            let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
+                            udp_socket.connect(format!("{}:{}", ready.ip, ready.port)).await?;
+                            // send discovery packet
+                            let mut buffer = [0; 74];
+                            buffer[0..2].copy_from_slice(&1u16.to_be_bytes());
+                            buffer[2..4].copy_from_slice(&70u16.to_be_bytes());
+                            buffer[4..8].copy_from_slice(&ready.ssrc.to_be_bytes());
+                            udp_socket.send(&buffer).await?;
+                            let mut buffer = [0; 74];
+                            udp_socket.recv(&mut buffer).await?;;
+                            let address = String::from_utf8_lossy(&buffer[8..72]).to_string();
+                            let port = u16::from_be_bytes([buffer[72], buffer[73]]);
+                            tracing::info!("Address: {}, Port: {}", address, port);
+                            let mut sender_lock = sender.lock().await;
+                            sender_lock.send(json_to_tmsg(&types::DiscordSelectProtocol {
+                                op: 1,
+                                d: types::DiscordSelectProtocolData {
+                                    protocol: "udp".to_string(),
+                                    data: types::DiscordSelectProtocolDataInfo {
+                                        address,
+                                        port,
+                                        mode: "xsalsa20_poly1305".to_string(),
+                                    }
+                                }
+                            })?).await?;
+                            Some(udp_socket)
+                        }
                     }
                     _ => {}
                 }
             }
+
         }
     }
     Ok(())
