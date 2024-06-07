@@ -1,6 +1,6 @@
 use audiopus::{coder::Encoder, Application, Bitrate, Channels, SampleRate};
 use crypto_secretbox::{
-    aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
+    aead::{AeadInPlace, KeyInit},
     XSalsa20Poly1305,
 };
 use std::sync::Arc;
@@ -91,7 +91,7 @@ impl RTPConnection {
                     voice_data.len() / 2
                 )
             };
-            let mut encoder = self.encoder.lock().await;
+            let encoder = self.encoder.lock().await;
             encoder.encode(&voice_data, &mut encoded_voice)?;
         }
         let buffer = self.encrypt(buffer, encoded_voice)?;
