@@ -1,7 +1,9 @@
+use audiopus::{coder::Encoder, Application, Bitrate, Channels, SampleRate};
 use crypto_secretbox::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     XSalsa20Poly1305,
 };
+use once_cell::sync::Lazy;
 use tokio::net::UdpSocket;
 
 pub struct RTPConnection {
@@ -16,6 +18,9 @@ impl RTPConnection {
     pub async fn new(ssrc: u32, ip: String, port: u16) -> anyhow::Result<Self> {
         let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
         udp_socket.connect(format!("{}:{}", ip, port)).await?;
+        let mut encoder =
+            Encoder::new(SampleRate::Hz48000, Channels::Stereo, Application::Audio).unwrap();
+        encoder.set_bitrate(Bitrate::BitsPerSecond(128000)).unwrap();
         Ok(Self {
             ssrc,
             udp_socket,
@@ -61,6 +66,7 @@ impl RTPConnection {
         buffer.extend_from_slice(&self.timestamp.to_be_bytes());
         // ssrc
         buffer.extend_from_slice(&self.ssrc.to_be_bytes());
+        //let mut voice_data = ENCODER.encode(&voice_data).unwrap();
         let nonce = XSalsa20Poly1305::generate_nonce(&mut OsRng);
         let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
         let mut crypted_voice: Vec<u8> = Vec::new();
