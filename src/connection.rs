@@ -3,8 +3,8 @@ use crypto_secretbox::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     XSalsa20Poly1305,
 };
-use once_cell::sync::Lazy;
-use tokio::net::UdpSocket;
+use std::sync::Arc;
+use tokio::{net::UdpSocket, sync::Mutex};
 
 pub struct RTPConnection {
     pub udp_socket: UdpSocket,
@@ -12,6 +12,7 @@ pub struct RTPConnection {
     sequence: u16,
     timestamp: u32,
     ssrc: u32,
+    encoder: Arc<Mutex<Encoder>>,
 }
 
 impl RTPConnection {
@@ -27,6 +28,7 @@ impl RTPConnection {
             secret_key: None,
             sequence: 0,
             timestamp: 0,
+            encoder: Arc::new(Mutex::new(encoder)),
         })
     }
 
@@ -51,6 +53,20 @@ impl RTPConnection {
         self.secret_key = Some(secret_key);
     }
 
+    pub fn encrypt(&self, header: Vec<u8>, mut data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        let secret_key = if let Some(secret_key) = &self.secret_key {
+            secret_key
+        } else {
+            return Err(anyhow::anyhow!("Secret key not set"));
+        };
+        let mut nonce = [0; 24];
+        nonce[0..12].copy_from_slice(&header);
+        let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
+        cipher.encrypt_in_place(&nonce.into(), b"", &mut data)?;
+        data.extend_from_slice(&nonce);
+        Ok(data)
+    }
+
     pub async fn send_voice_packet(&mut self, voice_data: Vec<u8>) -> anyhow::Result<()> {
         let secret_key = if let Some(secret_key) = &self.secret_key {
             secret_key
@@ -66,12 +82,19 @@ impl RTPConnection {
         buffer.extend_from_slice(&self.timestamp.to_be_bytes());
         // ssrc
         buffer.extend_from_slice(&self.ssrc.to_be_bytes());
-        //let mut voice_data = ENCODER.encode(&voice_data).unwrap();
-        let nonce = XSalsa20Poly1305::generate_nonce(&mut OsRng);
-        let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
-        let mut crypted_voice: Vec<u8> = Vec::new();
-        cipher.encrypt_in_place(&nonce, &[], &mut crypted_voice)?;
-        buffer.extend_from_slice(&crypted_voice);
+        let mut encoded_voice = Vec::new();
+        {
+            let voice_data = &voice_data;
+            let voice_data: &[i16] = unsafe {
+                std::slice::from_raw_parts(
+                    voice_data.as_ptr() as *const i16,
+                    voice_data.len() / 2
+                )
+            };
+            let mut encoder = self.encoder.lock().await;
+            encoder.encode(&voice_data, &mut encoded_voice)?;
+        }
+        let buffer = self.encrypt(buffer, encoded_voice)?;
         self.udp_socket.send(&buffer).await?;
         tracing::info!("Sent voice packet");
         // add timestamp

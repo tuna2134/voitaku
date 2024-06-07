@@ -272,7 +272,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                             )
                             .target_sample_rate(48000)
                             // Sample rate / channel layout
-                            .target_frame_samples(Some(24000))
+                            .target_frame_samples(Some(9600))
                             .build()?;
 
                         let mut encoder = AudioEncoder::builder("pcm_s16le")?
