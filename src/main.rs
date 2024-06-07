@@ -203,7 +203,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                             buffer[4..8].copy_from_slice(&ready.ssrc.to_be_bytes());
                             udp_socket.send(&buffer).await?;
                             let mut buffer = [0; 74];
-                            udp_socket.recv(&mut buffer).await?;;
+                            udp_socket.recv(&mut buffer).await?;
                             let address = String::from_utf8_lossy(&buffer[8..72]).to_string();
                             let port = u16::from_be_bytes([buffer[72], buffer[73]]);
                             tracing::info!("Address: {}, Port: {}", address, port);
