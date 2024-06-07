@@ -46,7 +46,7 @@ impl RTPConnection {
         self.secret_key = Some(secret_key);
     }
 
-    pub fn send_voice_packet(&mut self, voice_data: Vec<u8>) -> anyhow::Result<()> {
+    pub async fn send_voice_packet(&mut self, voice_data: Vec<u8>) -> anyhow::Result<()> {
         let secret_key = if let Some(secret_key) = &self.secret_key {
             secret_key
         } else {
@@ -66,6 +66,7 @@ impl RTPConnection {
         let mut crypted_voice: Vec<u8> = Vec::new();
         cipher.encrypt_in_place(&nonce, &[], &mut crypted_voice)?;
         buffer.extend_from_slice(&crypted_voice);
+        self.udp_socket.send(&buffer).await?;
         // add timestamp
         self.timestamp = self.timestamp.wrapping_add((48000 / 1000) * 20);
         Ok(())

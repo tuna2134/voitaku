@@ -16,7 +16,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::{
-    io::Cursor,
+    io::{Cursor, Write},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -304,8 +304,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                                     while let Some(packet) = encoder.take()? {
                                         if let Some(rtp) = &rtp {
                                             let mut rtp_lock = rtp.lock().await;
-                                            rtp_lock.send_voice_packet(packet.data().to_vec())?;
-                                            tracing::info!("Voice packet sent.");
+                                            rtp_lock.send_voice_packet(packet.data().to_vec()).await?;
                                         }
                                     }
                                 }
