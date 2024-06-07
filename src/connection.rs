@@ -63,7 +63,9 @@ impl RTPConnection {
         buffer.extend_from_slice(&self.ssrc.to_be_bytes());
         let nonce = XSalsa20Poly1305::generate_nonce(&mut OsRng);
         let cipher = XSalsa20Poly1305::new_from_slice(&secret_key)?;
-        let tag = cipher.encrypt_in_place(&nonce, &[], &mut buffer)?;
+        let mut crypted_voice: Vec<u8> = Vec::new();
+        cipher.encrypt_in_place(&nonce, &[], &mut crypted_voice)?;
+        buffer.extend_from_slice(&crypted_voice);
         // add timestamp
         self.timestamp = self.timestamp.wrapping_add((48000 / 1000) * 20);
         Ok(())

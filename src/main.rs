@@ -16,7 +16,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::{
-    io::{Cursor, Write},
+    io::{Cursor},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -173,6 +173,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             let result = sender_lock
                 .send(json_to_tmsg(&types::DiscordHeartbeat { op: 3, d: now }).unwrap())
                 .await;
+            drop(sender_lock);
             tracing::info!("Heartbeat sent: {}", last_sequence);
             if let Err(e) = result {
                 tracing::error!("{:?}", e);
@@ -304,6 +305,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                                         if let Some(rtp) = &rtp {
                                             let mut rtp_lock = rtp.lock().await;
                                             rtp_lock.send_voice_packet(packet.data().to_vec())?;
+                                            tracing::info!("Voice packet sent.");
                                         }
                                     }
                                 }
