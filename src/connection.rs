@@ -67,8 +67,9 @@ impl RTPConnection {
         cipher.encrypt_in_place(&nonce, &[], &mut crypted_voice)?;
         buffer.extend_from_slice(&crypted_voice);
         self.udp_socket.send(&buffer).await?;
+        tracing::info!("Sent voice packet");
         // add timestamp
-        self.timestamp = self.timestamp.wrapping_add((48000 / 1000) * 20);
+        self.timestamp = self.timestamp.wrapping_add(960);
         Ok(())
     }
 }
