@@ -14,8 +14,7 @@ use std::{
 };
 use tokio::{
     net::{TcpListener, UdpSocket},
-    sync::{oneshot::channel, Mutex},
-    time::Instant,
+    sync::{Mutex},
 };
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
@@ -100,7 +99,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
         }
     };
     tracing::info!("{:?}", data);
-    let (mut sender, mut receiver) = {
+    let (sender, mut receiver) = {
         let url = format!(
             "wss://{}/?v=4",
             data.endpoint
