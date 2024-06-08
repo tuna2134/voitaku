@@ -1,4 +1,4 @@
-use audiopus::{coder::Encoder, Application, Bitrate, Channels, SampleRate};
+// use audiopus::{coder::Encoder, Application, Bitrate, Channels, SampleRate};
 use crypto_secretbox::{
     aead::{AeadInPlace, KeyInit},
     XSalsa20Poly1305,
@@ -12,23 +12,25 @@ pub struct RTPConnection {
     sequence: u16,
     timestamp: u32,
     ssrc: u32,
-    encoder: Arc<Mutex<Encoder>>,
+    // encoder: Arc<Mutex<Encoder>>,
 }
 
 impl RTPConnection {
     pub async fn new(ssrc: u32, ip: String, port: u16) -> anyhow::Result<Self> {
         let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
         udp_socket.connect(format!("{}:{}", ip, port)).await?;
+        /*
         let mut encoder =
             Encoder::new(SampleRate::Hz48000, Channels::Stereo, Application::Audio).unwrap();
         encoder.set_bitrate(Bitrate::BitsPerSecond(128000)).unwrap();
+        */
         Ok(Self {
             ssrc,
             udp_socket,
             secret_key: None,
             sequence: 0,
             timestamp: 0,
-            encoder: Arc::new(Mutex::new(encoder)),
+            // encoder: Arc::new(Mutex::new(encoder)),
         })
     }
 
@@ -82,6 +84,7 @@ impl RTPConnection {
         buffer.extend_from_slice(&self.timestamp.to_be_bytes());
         // ssrc
         buffer.extend_from_slice(&self.ssrc.to_be_bytes());
+        /*
         let mut encoded_voice = Vec::new();
         {
             let voice_data = &voice_data;
@@ -94,7 +97,8 @@ impl RTPConnection {
             let encoder = self.encoder.lock().await;
             encoder.encode(voice_data, &mut encoded_voice)?;
         }
-        let buffer = self.encrypt(buffer, encoded_voice)?;
+        */
+        let buffer = self.encrypt(buffer, voice_data)?;
         self.udp_socket.send(&buffer).await?;
         tracing::info!("Sent voice packet");
         // add timestamp
