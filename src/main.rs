@@ -271,8 +271,8 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                                 SampleFormat::from_str("s16").unwrap()
                             )
                             .target_sample_rate(48000)
-                            // Sample rate / channel layout
-                            .target_frame_samples(Some(960))
+                            // (Sample rate / channel layout) * 0.02
+                            .target_frame_samples(Some(480))
                             .build()?;
 
                         let mut encoder = AudioEncoder::builder("pcm_s16le")?
