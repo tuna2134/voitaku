@@ -19,11 +19,6 @@ impl RTPConnection {
     pub async fn new(ssrc: u32, ip: String, port: u16) -> anyhow::Result<Self> {
         let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
         udp_socket.connect(format!("{}:{}", ip, port)).await?;
-        /*
-        let mut encoder =
-            Encoder::new(SampleRate::Hz48000, Channels::Stereo, Application::Audio).unwrap();
-        encoder.set_bitrate(Bitrate::BitsPerSecond(128000)).unwrap();
-        */
         Ok(Self {
             ssrc,
             udp_socket,
@@ -98,7 +93,8 @@ impl RTPConnection {
             encoder.encode(voice_data, &mut encoded_voice)?;
         }
         */
-        let buffer = self.encrypt(buffer, voice_data)?;
+        let encrpyted_voice = self.encrypt(buffer.clone(), voice_data)?;
+        buffer.extend_from_slice(&encrpyted_voice);
         self.udp_socket.send(&buffer).await?;
         tracing::info!("Sent voice packet");
         // add timestamp
