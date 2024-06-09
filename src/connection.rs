@@ -56,7 +56,7 @@ impl RTPConnection {
         } else {
             return Err(anyhow::anyhow!("Secret key not set"));
         };
-        let mut nonce = [0; 24];
+        let mut nonce: [u8; 24] = [0; 24];
         nonce[0..12].copy_from_slice(&header);
         let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
         cipher.encrypt_in_place(&nonce.into(), b"", &mut data)?;
@@ -71,7 +71,7 @@ impl RTPConnection {
             return Err(anyhow::anyhow!("Secret key not set"));
         };
         self.sequence = self.sequence.wrapping_add(1);
-        let mut buffer = Vec::new();
+        let mut buffer: Vec<u8> = Vec::new();
         buffer.extend_from_slice(&0x80u8.to_be_bytes());
         buffer.extend_from_slice(&0x78u8.to_be_bytes());
         buffer.extend_from_slice(&self.sequence.to_be_bytes());
@@ -79,20 +79,6 @@ impl RTPConnection {
         buffer.extend_from_slice(&self.timestamp.to_be_bytes());
         // ssrc
         buffer.extend_from_slice(&self.ssrc.to_be_bytes());
-        /*
-        let mut encoded_voice = Vec::new();
-        {
-            let voice_data = &voice_data;
-            let voice_data: &[i16] = unsafe {
-                std::slice::from_raw_parts(
-                    voice_data.as_ptr() as *const i16,
-                    voice_data.len() / 2
-                )
-            };
-            let encoder = self.encoder.lock().await;
-            encoder.encode(voice_data, &mut encoded_voice)?;
-        }
-        */
         let encrpyted_voice = self.encrypt(buffer.clone(), voice_data)?;
         buffer.extend_from_slice(&encrpyted_voice);
         self.udp_socket.send(&buffer).await?;
