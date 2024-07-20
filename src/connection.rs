@@ -50,7 +50,7 @@ impl RTPConnection {
         self.secret_key = Some(secret_key);
     }
 
-    pub fn encrypt(&self, header: Vec<u8>, mut data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+    pub fn encrypt(&self, header: &[u8], mut data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
         let secret_key = if let Some(secret_key) = &self.secret_key {
             secret_key
         } else {
@@ -71,15 +71,15 @@ impl RTPConnection {
             return Err(anyhow::anyhow!("Secret key not set"));
         };
         self.sequence = self.sequence.wrapping_add(1);
-        let mut buffer: Vec<u8> = Vec::new();
-        buffer.extend_from_slice(&0x80u8.to_be_bytes());
-        buffer.extend_from_slice(&0x78u8.to_be_bytes());
-        buffer.extend_from_slice(&self.sequence.to_be_bytes());
-        // timestamp
-        buffer.extend_from_slice(&self.timestamp.to_be_bytes());
-        // ssrc
-        buffer.extend_from_slice(&self.ssrc.to_be_bytes());
-        let encrpyted_voice = self.encrypt(buffer.clone(), voice_data)?;
+        let mut buffer = Vec::with_capacity(12 + voice_data.len());
+        println!("voice data len: {}", voice_data.len());
+        let mut header_buffer: [u8; 12] = [0; 12];
+        header_buffer[0] = 0x80;
+        header_buffer[1] = 0x78;
+        header_buffer[2..4].copy_from_slice(&self.sequence.to_be_bytes());
+        header_buffer[4..8].copy_from_slice(&self.timestamp.to_be_bytes());
+        header_buffer[8..12].copy_from_slice(&self.ssrc.to_be_bytes());
+        let encrpyted_voice = self.encrypt(&header_buffer, voice_data)?;
         buffer.extend_from_slice(&encrpyted_voice);
         self.udp_socket.send(&buffer).await?;
         tracing::info!("Sent voice packet");
