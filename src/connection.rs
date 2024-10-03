@@ -58,7 +58,7 @@ impl RTPConnection {
             return Err(anyhow::anyhow!("Secret key not set"));
         };
         let mut nonce: [u8; 24] = [0; 24];
-        nonce[0..12].copy_from_slice(&header);
+        nonce[0..12].copy_from_slice(header);
         let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
         cipher.encrypt_in_place_detached(&nonce.into(), b"", &mut data)?;
         data.extend_from_slice(&nonce);
