@@ -1,4 +1,3 @@
-// use audiopus::{coder::Encoder, Application, Bitrate, Channels, SampleRate};
 use crypto_secretbox::{
     aead::{AeadInPlace, KeyInit},
     XSalsa20Poly1305,
@@ -12,6 +11,8 @@ pub struct RTPConnection {
     sequence: u16,
     timestamp: u32,
     ssrc: u32,
+    ip: String,
+    port: u16,
     // encoder: Arc<Mutex<Encoder>>,
 }
 
@@ -25,7 +26,8 @@ impl RTPConnection {
             secret_key: None,
             sequence: 0,
             timestamp: 0,
-            // encoder: Arc::new(Mutex::new(encoder)),
+            ip,
+            port,
         })
     }
 
@@ -59,7 +61,7 @@ impl RTPConnection {
         let mut nonce: [u8; 24] = [0; 24];
         nonce[0..12].copy_from_slice(&header);
         let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
-        cipher.encrypt_in_place(&nonce.into(), b"", &mut data)?;
+        cipher.encrypt_in_place_detached(&nonce.into(), b"", &mut data)?;
         data.extend_from_slice(&nonce);
         Ok(data)
     }
@@ -71,7 +73,7 @@ impl RTPConnection {
             return Err(anyhow::anyhow!("Secret key not set"));
         };
         self.sequence = self.sequence.wrapping_add(1);
-        let mut buffer = Vec::with_capacity(12 + voice_data.len());
+        let mut buffer = Vec::new();
         println!("voice data len: {}", voice_data.len());
         let mut header_buffer: [u8; 12] = [0; 12];
         header_buffer[0] = 0x80;
@@ -81,7 +83,8 @@ impl RTPConnection {
         header_buffer[8..12].copy_from_slice(&self.ssrc.to_be_bytes());
         let encrpyted_voice = self.encrypt(&header_buffer, voice_data)?;
         buffer.extend_from_slice(&encrpyted_voice);
-        self.udp_socket.send(&buffer).await?;
+        let result = self.udp_socket.send_to(&buffer, format!("{}:{}", self.ip, self.port)).await?;
+        println!("send voice packet result: {:?}", result);
         tracing::info!("Sent voice packet");
         // add timestamp
         self.timestamp = self.timestamp.wrapping_add(960);

@@ -293,6 +293,7 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                         })?).await?;
                         tracing::info!("Playing voice data...");
 
+                        let mut voice_data = Vec::new();
                         while let Some(packet) = demuxer.take()? {
                             if packet.stream_index() != index {
                                 continue;
@@ -306,7 +307,16 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
                                     encoder.push(frame)?;
 
                                     while let Some(packet) = encoder.take()? {
+                                        voice_data.extend_from_slice(packet.data());
                                         if let Some(rtp) = &rtp {
+                                            sender_lock.send(json_to_tmsg(&types::DiscordVoiceSpeaking {
+                                                op: 5,
+                                                d: types::DiscordVoiceSpeakingData {
+                                                    speaking: 1 << 0,
+                                                    delay: 0,
+                                                    ssrc: 0,
+                                                }
+                                            })?).await?;
                                             let mut rtp_lock = rtp.lock().await;
                                             rtp_lock.send_voice_packet(packet.data().to_vec()).await?;
                                         }
