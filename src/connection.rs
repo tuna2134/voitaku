@@ -66,6 +66,31 @@ impl RTPConnection {
         Ok(data)
     }
 
+    pub fn decrypt(&self, nonce: &[u8], mut data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        let secret_key = if let Some(secret_key) = &self.secret_key {
+            secret_key
+        } else {
+            return Err(anyhow::anyhow!("Secret key not set"));
+        };
+        let cipher = XSalsa20Poly1305::new_from_slice(secret_key)?;
+        let mut new_nonce: [u8; 24] = [0; 24];
+        new_nonce[0..12].copy_from_slice(nonce);
+        cipher.decrypt_in_place(&new_nonce.into(), b"", &mut data)?;
+        Ok(data.to_vec())
+    }
+
+    pub async fn recv_voice_packet(&mut self) -> anyhow::Result<Vec<u8>> {
+        let mut buffer = [0u8; 1343];
+        let size = self.udp_socket.recv(&mut buffer).await?;
+        println!("{} {}", buffer[0], buffer[1]);
+        if buffer[1] != 0x78 {
+            return Err(anyhow::anyhow!("Invalid RTCP packet"))
+        }
+        let mut voice_data = buffer[12..size].to_vec();
+        let voice_data = self.decrypt(&buffer[0..12], voice_data.clone())?;
+        Ok(voice_data)
+    }
+
     pub async fn send_voice_packet(&mut self, voice_data: Vec<u8>) -> anyhow::Result<()> {
         let secret_key = if let Some(secret_key) = &self.secret_key {
             secret_key

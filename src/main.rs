@@ -24,6 +24,7 @@ use std::{
 use tokio::{net::TcpListener, sync::Mutex};
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
+use audiopus::{coder::Decoder as OpusDecoder, SampleRate, Channels};
 
 mod types;
 use types::Payload;
@@ -79,6 +80,14 @@ async fn wrapper(ws: WebSocket) {
     if let Err(e) = handle_socket(ws).await {
         tracing::error!("{:?}", e);
     }
+}
+
+fn i16_to_u8_buffer(input: Vec<i16>) -> Vec<u8> {
+    let mut output: Vec<u8> = Vec::with_capacity(input.len() * 2);
+    for &sample in &input {
+        output.extend_from_slice(&sample.to_le_bytes()); // i16をu8に変換して追加
+    }
+    output
 }
 
 async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
@@ -237,6 +246,20 @@ async fn handle_socket(ws: WebSocket) -> anyhow::Result<()> {
             Some(msg) = async {
                 read.next().await
             } => {
+                let mut contents: Vec<f32> = Vec::new();
+                let mut decoder = OpusDecoder::new(SampleRate::Hz48000, Channels::Stereo)?;
+                loop {
+                    if let Some(ref rtp) = rtp {
+                        let mut rtp_lock = rtp.lock().await;
+                        if let Ok(packet) = rtp_lock.recv_voice_packet().await {
+                            println!("len: {}", packet.len());
+                            let mut outputs = Vec::new();
+                            decoder.decode_float(Some(&packet), &mut outputs, false)?;
+                            contents.extend_from_slice(&outputs);
+                            // std::fs::write("input.pcm", i16_to_u8_buffer(contents.clone()))?;
+                        }
+                    }
+                }
                 let msg = match msg? {
                     Message::Text(msg) => msg,
                     _ => continue,

@@ -96,6 +96,9 @@ async def test_voice():
         logger.info("ready")
         channel = client.get_channel(759362341073715203)
         await channel.connect(cls=VoiceClient)
+
+        await asyncio.sleep(5)
+        await client.close()
         
 
     async with client:

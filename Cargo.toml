@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ac-ffmpeg = "0.18.1"
 anyhow = "1.0.86"
+audiopus = { version = "0.2.0", features = ["decoder"] }
 axum = { version = "0.7.5", features = ["ws"] }
 base64 = "0.22.1"
 crypto_secretbox = { version = "0.1.1", features = ["heapless", "std"] }
