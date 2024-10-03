@@ -2,8 +2,7 @@ use crypto_secretbox::{
     aead::{AeadInPlace, KeyInit},
     XSalsa20Poly1305,
 };
-use std::sync::Arc;
-use tokio::{net::UdpSocket, sync::Mutex};
+use tokio::{net::UdpSocket};
 
 pub struct RTPConnection {
     pub udp_socket: UdpSocket,
@@ -86,7 +85,7 @@ impl RTPConnection {
         if buffer[1] != 0x78 {
             return Err(anyhow::anyhow!("Invalid RTCP packet"))
         }
-        let mut voice_data = buffer[12..size].to_vec();
+        let voice_data = buffer[12..size].to_vec();
         let voice_data = self.decrypt(&buffer[0..12], voice_data.clone())?;
         Ok(voice_data)
     }
