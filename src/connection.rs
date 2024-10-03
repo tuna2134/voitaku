@@ -2,7 +2,7 @@ use crypto_secretbox::{
     aead::{AeadInPlace, KeyInit},
     XSalsa20Poly1305,
 };
-use tokio::{net::UdpSocket};
+use tokio::net::UdpSocket;
 
 pub struct RTPConnection {
     pub udp_socket: UdpSocket,
@@ -83,7 +83,7 @@ impl RTPConnection {
         let size = self.udp_socket.recv(&mut buffer).await?;
         println!("{} {}", buffer[0], buffer[1]);
         if buffer[1] != 0x78 {
-            return Err(anyhow::anyhow!("Invalid RTCP packet"))
+            return Err(anyhow::anyhow!("Invalid RTCP packet"));
         }
         let voice_data = buffer[12..size].to_vec();
         let voice_data = self.decrypt(&buffer[0..12], voice_data.clone())?;
@@ -107,7 +107,10 @@ impl RTPConnection {
         header_buffer[8..12].copy_from_slice(&self.ssrc.to_be_bytes());
         let encrpyted_voice = self.encrypt(&header_buffer, voice_data)?;
         buffer.extend_from_slice(&encrpyted_voice);
-        let result = self.udp_socket.send_to(&buffer, format!("{}:{}", self.ip, self.port)).await?;
+        let result = self
+            .udp_socket
+            .send_to(&buffer, format!("{}:{}", self.ip, self.port))
+            .await?;
         println!("send voice packet result: {:?}", result);
         tracing::info!("Sent voice packet");
         // add timestamp

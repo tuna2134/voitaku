@@ -5,6 +5,7 @@ use ac_ffmpeg::{
     },
     format::{demuxer::Demuxer, io::IO},
 };
+use audiopus::{coder::Decoder as OpusDecoder, Channels, SampleRate};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -24,7 +25,6 @@ use std::{
 use tokio::{net::TcpListener, sync::Mutex};
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::{fmt::time::LocalTime, EnvFilter};
-use audiopus::{coder::Decoder as OpusDecoder, SampleRate, Channels};
 
 mod types;
 use types::Payload;
