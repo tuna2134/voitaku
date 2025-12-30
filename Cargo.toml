@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ac-ffmpeg = "0.18.1"
+ac-ffmpeg = "0.19.0"
 anyhow = "1.0.86"
 audiopus = { version = "0.2.0", features = ["decoder"] }
 axum = { version = "0.7.5", features = ["ws"] }
